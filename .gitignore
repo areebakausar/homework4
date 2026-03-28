@@ -1,0 +1,6 @@
+/logs/*
+/assets/*
+/homework/__pycache__/*
+/homework/datasets/__pycache__/*
+/grader/__pycache__/*
+/grader/datasets/__pycache__/*
