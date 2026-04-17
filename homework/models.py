@@ -23,6 +23,22 @@ class MLPPlanner(nn.Module):
 
         self.n_track = n_track
         self.n_waypoints = n_waypoints
+        
+        # Input: flattened track_left and track_right
+        # track_left: (b, n_track, 2) -> flattened to (b, n_track * 2)
+        # track_right: (b, n_track, 2) -> flattened to (b, n_track * 2)
+        # Total input features: n_track * 2 * 2 = n_track * 4
+        input_size = n_track * 4
+        output_size = n_waypoints * 2
+        
+        # Build MLP with hidden layers
+        self.mlp = nn.Sequential(
+            nn.Linear(input_size, 128),
+            nn.ReLU(),
+            nn.Linear(128, 64),
+            nn.ReLU(),
+            nn.Linear(64, output_size),
+        )
 
     def forward(
         self,
@@ -43,7 +59,21 @@ class MLPPlanner(nn.Module):
         Returns:
             torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
         """
-        raise NotImplementedError
+        # Flatten track boundaries
+        batch_size = track_left.shape[0]
+        track_left_flat = track_left.reshape(batch_size, -1)  # (b, n_track * 2)
+        track_right_flat = track_right.reshape(batch_size, -1)  # (b, n_track * 2)
+        
+        # Concatenate the flattened inputs
+        x = torch.cat([track_left_flat, track_right_flat], dim=1)  # (b, n_track * 4)
+        
+        # Pass through MLP
+        output = self.mlp(x)  # (b, n_waypoints * 2)
+        
+        # Reshape to waypoints format
+        waypoints = output.reshape(batch_size, self.n_waypoints, 2)  # (b, n_waypoints, 2)
+        
+        return waypoints
 
 
 class TransformerPlanner(nn.Module):
