@@ -13,7 +13,6 @@ import torch
 import torch.utils.tensorboard as tb
 from torch.utils.data import DataLoader
 
-from homework.datasets.classification_dataset import SuperTuxDataset
 from homework.datasets.road_dataset import load_data
 from homework.models import HOMEWORK_DIR, load_model, save_model
 from homework.metrics import PlannerMetric
@@ -22,7 +21,7 @@ HOMEWORK_DIR = Path(__file__).resolve().parent
 
 def train(
     exp_dir: str = "logs",
-    model_name: str = "mlp_planner",
+    model_name: str = "cnn_planner",
     num_epoch: int = 50,
     lr: float = 5e-4,
     batch_size: int = 128,
@@ -49,11 +48,23 @@ def train(
     model = model.to(device)
     model.train()
 
-    train_dataset = SuperTuxDataset("classification_data/train", transform_pipeline="aug")
-    val_dataset = SuperTuxDataset("classification_data/val", transform_pipeline="default")
+    train_data = load_data(
+        "drive_data/train",
+        transform_pipeline="default",
+        return_dataloader=True,
+        num_workers=4,
+        batch_size=batch_size,
+        shuffle=True,
+    )
 
-    train_data = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=2)
-    val_data = DataLoader(val_dataset, batch_size=batch_size, shuffle=False, num_workers=2)
+    val_data = load_data(
+        "drive_data/val",
+        transform_pipeline="default",
+        return_dataloader=True,
+        num_workers=4,
+        batch_size=batch_size,
+        shuffle=False,
+    )
 
     loss_func = torch.nn.CrossEntropyLoss()
     
