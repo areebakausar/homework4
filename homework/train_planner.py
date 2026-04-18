@@ -16,6 +16,7 @@ from homework.datasets.road_dataset import load_data
 from homework.models import HOMEWORK_DIR, load_model, save_model
 from homework.metrics import PlannerMetric
 
+HOMEWORK_DIR = Path(__file__).resolve().parent
 
 def train(
     exp_dir: str = "logs",
@@ -167,8 +168,9 @@ def train(
     save_model(model)
 
     # save a copy of model weights in the log directory
-    torch.save(model.state_dict(), log_dir / f"{model_name}.th")
-    print(f"Model saved to {log_dir / f'{model_name}.th'}")
+    output_path = HOMEWORK_DIR / f"{model_name}.th"
+    torch.save(model.state_dict(), output_path)
+    print(f"Model saved to {output_path}")
 
 
 if __name__ == "__main__":
