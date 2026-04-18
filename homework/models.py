@@ -84,13 +84,40 @@ class CNNPlanner(torch.nn.Module):
     def __init__(
         self,
         n_waypoints: int = 3,
+        hidden_dim: int = 128,
+        dropout: float = 0.5,
+        num_layers: int = 2,
     ):
         super().__init__()
 
         self.n_waypoints = n_waypoints
+        self.height = 96
+        self.width = 128
 
         self.register_buffer("input_mean", torch.as_tensor(INPUT_MEAN), persistent=False)
         self.register_buffer("input_std", torch.as_tensor(INPUT_STD), persistent=False)
+        cnn_layers = []
+        c1 = 3 # input channels for RGB image
+        for c2 in [32, 64, 128]:
+            cnn_layers.append(nn.Conv2d(c1, c2, kernel_size=3, padding=1))
+            cnn_layers.append(nn.ReLU())
+            cnn_layers.append(nn.MaxPool2d(2))
+            c1 = c2
+        self.cnn = nn.Sequential(*cnn_layers)
+        
+        # Build fully connected layers with specified hidden_dim and num_layers
+        fc_layers = []
+        fc_input_dim = 128 * 12 * 16
+        
+        for i in range(num_layers - 1):
+            fc_layers.append(nn.Linear(fc_input_dim, hidden_dim))
+            fc_layers.append(nn.ReLU())
+            fc_layers.append(nn.Dropout(dropout))
+            fc_input_dim = hidden_dim
+        
+        # Final output layer
+        fc_layers.append(nn.Linear(fc_input_dim, n_waypoints * 2))
+        self.classifier = nn.Sequential(*fc_layers)
 
     def forward(self, image: torch.Tensor, **kwargs) -> torch.Tensor:
         """
@@ -103,7 +130,11 @@ class CNNPlanner(torch.nn.Module):
         x = image
         x = (x - self.input_mean[None, :, None, None]) / self.input_std[None, :, None, None]
 
-        raise NotImplementedError
+        x = self.cnn(x)
+        x = x.view(x.size(0), -1)
+        x = self.classifier(x)
+
+        return x.view(-1, self.n_waypoints, 2)
 
 MODEL_FACTORY = {
     "mlp_planner": MLPPlanner,
