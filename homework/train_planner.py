@@ -25,6 +25,7 @@ def train(
     batch_size: int = 128,
     seed: int = 2024,
     weight_decay: float = 1e-4,
+    **kwargs,
 ):
     if torch.cuda.is_available():
         device = torch.device("cuda")
@@ -43,7 +44,7 @@ def train(
     logger = tb.SummaryWriter(log_dir)
 
     # note: the grader uses default kwargs for models
-    model = load_model(model_name)
+    model = load_model(model_name, **kwargs)
     model = model.to(device)
     model.train()
 
