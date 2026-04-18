@@ -186,7 +186,7 @@ def save_model(model: torch.nn.Module) -> str:
     if model_name is None:
         raise ValueError(f"Model type '{str(type(model))}' not supported")
 
-    output_path = HOMEWORK_DIR / f"{model_name}.th"
+    output_path = Path(__file__).resolve().parent / f"{model_name}.th"
     torch.save(model.state_dict(), output_path)
 
     return output_path

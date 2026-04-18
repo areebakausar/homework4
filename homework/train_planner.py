@@ -72,12 +72,19 @@ def train(
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 
     global_step = 0
-    metrics = {"train_loss": [], "val_loss": [], "val_l1": []}
+    metrics = {
+        "train_loss": [],
+        "val_loss": [],
+        "val_l1": [],
+        "val_longitudinal": [],
+        "val_lateral": [],
+    }
 
     # training loop
     for epoch in range(num_epoch):
         # clear metrics at beginning of epoch
-        for key in metrics: metrics[key].clear()
+        for key in metrics:
+            metrics[key].clear()
 
         model.train()
 
@@ -89,7 +96,7 @@ def train(
             waypoints_mask = batch["waypoints_mask"].to(device)
 
             pred_waypoints = model(track_left=track_left, track_right=track_right)
-            
+
             # Mask out invalid waypoints and compute loss
             masked_waypoints = waypoints * waypoints_mask[..., None]
             masked_pred = pred_waypoints * waypoints_mask[..., None]
@@ -98,14 +105,14 @@ def train(
             optimizer.zero_grad()
             loss_val.backward()
             optimizer.step()
-            
+
             global_step += 1
-            metrics["train_loss"].append(metric.add(pred_waypoints, waypoints, waypoints_mask))
+            metrics["train_loss"].append(loss_val.item())
 
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
             model.eval()
-            
+
             # Prepare metric collector
             metric = PlannerMetric()
 
@@ -121,24 +128,29 @@ def train(
                 masked_waypoints = waypoints * waypoints_mask[..., None]
                 masked_pred = pred_waypoints * waypoints_mask[..., None]
                 loss_val = loss_func(masked_pred, masked_waypoints)
-                metrics["train_loss"].append(metric.add(pred_waypoints, waypoints, waypoints_mask))
-                
+                metrics["val_loss"].append(loss_val.item())
+
                 # Add to metric
                 metric.add(pred_waypoints, waypoints, waypoints_mask)
-            
+
             # Get planner metrics
             planner_metrics = metric.compute()
             metrics["val_l1"].append(planner_metrics["l1_error"])
-                
+            metrics["val_longitudinal"].append(planner_metrics["longitudinal_error"])
+            metrics["val_lateral"].append(planner_metrics["lateral_error"])
 
         # log average train and val metrics to tensorboard
         epoch_train_loss = torch.as_tensor(metrics["train_loss"]).mean()
         epoch_val_loss = torch.as_tensor(metrics["val_loss"]).mean()
         epoch_val_l1 = torch.as_tensor(metrics["val_l1"]).mean()
+        epoch_val_longitudinal = torch.as_tensor(metrics["val_longitudinal"]).mean()
+        epoch_val_lateral = torch.as_tensor(metrics["val_lateral"]).mean()
 
         logger.add_scalar("train_loss", epoch_train_loss, global_step)
         logger.add_scalar("val_loss", epoch_val_loss, global_step)
         logger.add_scalar("val_l1_error", epoch_val_l1, global_step)
+        logger.add_scalar("val_longitudinal_error", epoch_val_longitudinal, global_step)
+        logger.add_scalar("val_lateral_error", epoch_val_lateral, global_step)
 
         # print on first, last, every 10th epoch
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
@@ -146,6 +158,8 @@ def train(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
                 f"train_loss={epoch_train_loss:.4f} "
                 f"val_loss={epoch_val_loss:.4f} "
+                f"val_longitudinal_error={epoch_val_longitudinal:.4f} "
+                f"val_lateral_error={epoch_val_lateral:.4f} "
                 f"val_l1_error={epoch_val_l1:.4f}"
             )
 
@@ -167,6 +181,9 @@ if __name__ == "__main__":
     parser.add_argument("--batch_size", type=int, default=128)
     parser.add_argument("--seed", type=int, default=2024)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--hidden_dim", type=int, default=128)
+    parser.add_argument("--num_layers", type=int, default=3)
+
 
     # pass all arguments to train
     train(**vars(parser.parse_args()))
