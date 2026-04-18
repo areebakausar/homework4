@@ -13,9 +13,9 @@ class MLPPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
-        hidden_dim: int = 128,
-        num_layers: int = 3,
-        dropout: float = 0.1,
+        hidden_dim=512,
+        num_layers = 4,
+        dropout = 0.1,
     ):
         """
         Args:
@@ -33,6 +33,7 @@ class MLPPlanner(nn.Module):
         layers = []
         for i in range(num_layers):
             layers.append(nn.Linear(input_size if i == 0 else hidden_dim, hidden_dim))
+            layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.ReLU())
             layers.append(nn.Dropout(p=dropout))
         layers.append(nn.Linear(hidden_dim, output_size))

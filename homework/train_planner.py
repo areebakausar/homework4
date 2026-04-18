@@ -39,6 +39,7 @@ def train(
     # set random seed so each run is deterministic
     torch.manual_seed(seed)
     np.random.seed(seed)
+    torch.backends.cudnn.benchmark = True
 
     # directory with timestamp to save tensorboard logs and model checkpoints
     log_dir = Path(exp_dir) / f"{model_name}_{datetime.now().strftime('%m%d_%H%M%S')}"
@@ -53,7 +54,7 @@ def train(
         "drive_data/train",
         transform_pipeline="default",
         return_dataloader=True,
-        num_workers=2,
+        num_workers=4,
         batch_size=batch_size,
         shuffle=True,
     )
@@ -62,7 +63,7 @@ def train(
         "drive_data/val",
         transform_pipeline="default",
         return_dataloader=True,
-        num_workers=2,
+        num_workers=4,
         batch_size=batch_size,
         shuffle=False,
     )
@@ -103,7 +104,7 @@ def train(
             masked_pred = pred_waypoints * waypoints_mask[..., None]
             loss_val = loss_func(masked_pred, masked_waypoints)
 
-            optimizer.zero_grad()
+            optimizer.zero_grad(set_to_none=True)
             loss_val.backward()
             optimizer.step()
 
@@ -154,14 +155,17 @@ def train(
         logger.add_scalar("val_lateral_error", epoch_val_lateral, global_step)
 
         # print on first, last, every 10th epoch
-        if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 10 == 0:
+        if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 5 == 0:
             print(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
-                f"train_loss={epoch_train_loss:.4f} "
-                f"val_loss={epoch_val_loss:.4f} "
-                f"val_longitudinal_error={epoch_val_longitudinal:.4f} "
-                f"val_lateral_error={epoch_val_lateral:.4f} "
-                f"val_l1_error={epoch_val_l1:.4f}"
+                f"train_loss={epoch_train_loss:.2f} "
+                f"val_loss={epoch_val_loss:.2f} "
+                f"val_l1_error={epoch_val_l1:.2f}"
+            )
+            print(
+                f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
+                f"val_longitudinal_error={epoch_val_longitudinal:.2f} "
+                f"val_lateral_error={epoch_val_lateral:.2f} "
             )
 
     # save and overwrite the model in the root directory for grading
@@ -171,21 +175,3 @@ def train(
     output_path = HOMEWORK_DIR / f"{model_name}.th"
     torch.save(model.state_dict(), output_path)
     print(f"Model saved to {output_path}")
-
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-
-    parser.add_argument("--exp_dir", type=str, default="logs")
-    parser.add_argument("--model_name", type=str, default="mlp_planner")
-    parser.add_argument("--num_epoch", type=int, default=10)
-    parser.add_argument("--lr", type=float, default=1e-3)
-    parser.add_argument("--batch_size", type=int, default=128)
-    parser.add_argument("--seed", type=int, default=2024)
-    parser.add_argument("--weight_decay", type=float, default=1e-4)
-    parser.add_argument("--hidden_dim", type=int, default=128)
-    parser.add_argument("--num_layers", type=int, default=3)
-
-
-    # pass all arguments to train
-    train(**vars(parser.parse_args()))
