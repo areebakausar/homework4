@@ -21,9 +21,9 @@ HOMEWORK_DIR = Path(__file__).resolve().parent
 def train(
     exp_dir: str = "logs",
     model_name: str = "mlp_planner",
-    num_epoch: int = 50,
-    lr: float = 1e-3,
-    batch_size: int = 128,
+    num_epoch: int = 100,
+    lr: float = 1e-5,
+    batch_size: int = 64,
     seed: int = 2024,
     weight_decay: float = 1e-4,
     **kwargs,
@@ -69,7 +69,7 @@ def train(
     )
 
     # create loss function and optimizer
-    loss_func = torch.nn.MSELoss()
+    loss_func = torch.nn.L1Loss()
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
 

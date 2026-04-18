@@ -15,7 +15,6 @@ class MLPPlanner(nn.Module):
         n_waypoints: int = 3,
         hidden_dim=512,
         num_layers = 4,
-        dropout = 0.1,
     ):
         """
         Args:
@@ -35,7 +34,6 @@ class MLPPlanner(nn.Module):
             layers.append(nn.Linear(input_size if i == 0 else hidden_dim, hidden_dim))
             layers.append(nn.BatchNorm1d(hidden_dim))
             layers.append(nn.ReLU())
-            layers.append(nn.Dropout(p=dropout))
         layers.append(nn.Linear(hidden_dim, output_size))
 
         self.model = nn.Sequential(*layers)
@@ -62,9 +60,10 @@ class MLPPlanner(nn.Module):
         """
         # Flatten track boundaries
         batch_size = track_left.shape[0]
-        track_left_flat = track_left.reshape(batch_size, -1)
+        track_left_flat = track_left.reshape(batch_size, -1) 
         track_right_flat = track_right.reshape(batch_size, -1)
         track_flat = torch.cat([track_left_flat, track_right_flat], dim=1)
+        
         
         # Pass through MLP
         output = self.model(track_flat)
