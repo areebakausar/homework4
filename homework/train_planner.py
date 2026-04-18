@@ -100,7 +100,7 @@ def train(
             optimizer.step()
             
             global_step += 1
-            metrics["train_loss"].append(loss_val.item())
+            metrics["train_loss"].append(metric.add(pred_waypoints, waypoints, waypoints_mask))
 
         # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
@@ -121,7 +121,7 @@ def train(
                 masked_waypoints = waypoints * waypoints_mask[..., None]
                 masked_pred = pred_waypoints * waypoints_mask[..., None]
                 loss_val = loss_func(masked_pred, masked_waypoints)
-                metrics["val_loss"].append(loss_val.item())
+                metrics["train_loss"].append(metric.add(pred_waypoints, waypoints, waypoints_mask))
                 
                 # Add to metric
                 metric.add(pred_waypoints, waypoints, waypoints_mask)
