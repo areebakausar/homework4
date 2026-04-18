@@ -1,26 +1,21 @@
-from pathlib import Path
-
 import torch
 import torch.nn as nn
+from pathlib import Path
 
 HOMEWORK_DIR = Path(__file__).resolve().parent
 INPUT_MEAN = [0.2788, 0.2657, 0.2629]
 INPUT_STD = [0.2064, 0.1944, 0.2252]
 
-
 class MLPPlanner(nn.Module):
     def __init__(
-        self,
-        n_track: int = 10,
-        n_waypoints: int = 3,
-        hidden_dim=512,
-        num_layers = 4,
+        self, 
+        n_track: int = 10, 
+        n_waypoints: int = 3, 
+        hidden_dim: int = 256, 
+        num_layers: int = 4, 
+        dropout: int = 1e-9,
+        **kwargs,
     ):
-        """
-        Args:
-            n_track (int): number of points in each side of the track
-            n_waypoints (int): number of waypoints to predict
-        """
         super().__init__()
 
         self.n_track = n_track
@@ -30,49 +25,25 @@ class MLPPlanner(nn.Module):
         output_size = n_waypoints * 2
 
         layers = []
-        for i in range(num_layers):
-            layers.append(nn.Linear(input_size if i == 0 else hidden_dim, hidden_dim))
-            layers.append(nn.BatchNorm1d(hidden_dim))
-            layers.append(nn.ReLU())
+        layers.append(nn.Linear(input_size, hidden_dim))
+        layers.append(nn.Dropout(dropout))
+        layers.append(nn.ReLU())
         layers.append(nn.Linear(hidden_dim, output_size))
 
         self.model = nn.Sequential(*layers)
-        
 
-    def forward(
-        self,
-        track_left: torch.Tensor,
-        track_right: torch.Tensor,
-        **kwargs,
-    ) -> torch.Tensor:
-        """
-        Predicts waypoints from the left and right boundaries of the track.
-
-        During test time, your model will be called with
-        model(track_left=..., track_right=...), so keep the function signature as is.
-
-        Args:
-            track_left (torch.Tensor): shape (b, n_track, 2)
-            track_right (torch.Tensor): shape (b, n_track, 2)
-
-        Returns:
-            torch.Tensor: future waypoints with shape (b, n_waypoints, 2)
-        """
-        # Flatten track boundaries
+    def forward(self, track_left=None, track_right=None, track=None, *args, **kwargs) -> torch.Tensor:
         batch_size = track_left.shape[0]
         track_left_flat = track_left.reshape(batch_size, -1) 
         track_right_flat = track_right.reshape(batch_size, -1)
         track_flat = torch.cat([track_left_flat, track_right_flat], dim=1)
         
         
-        # Pass through MLP
         output = self.model(track_flat)
         
-        # Reshape to waypoints format
         waypoints = output.reshape(batch_size, self.n_waypoints, 2) 
         
         return waypoints
-
 
 class TransformerPlanner(nn.Module):
     def __init__(
@@ -109,7 +80,6 @@ class TransformerPlanner(nn.Module):
         """
         raise NotImplementedError
 
-
 class CNNPlanner(torch.nn.Module):
     def __init__(
         self,
@@ -135,13 +105,11 @@ class CNNPlanner(torch.nn.Module):
 
         raise NotImplementedError
 
-
 MODEL_FACTORY = {
     "mlp_planner": MLPPlanner,
     "transformer_planner": TransformerPlanner,
     "cnn_planner": CNNPlanner,
 }
-
 
 def load_model(
     model_name: str,

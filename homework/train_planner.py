@@ -21,9 +21,9 @@ HOMEWORK_DIR = Path(__file__).resolve().parent
 def train(
     exp_dir: str = "logs",
     model_name: str = "mlp_planner",
-    num_epoch: int = 100,
-    lr: float = 1e-5,
-    batch_size: int = 64,
+    num_epoch: int = 50,
+    lr: float = 5e-4,
+    batch_size: int = 128,
     seed: int = 2024,
     weight_decay: float = 1e-4,
     **kwargs,
@@ -36,16 +36,13 @@ def train(
         print("CUDA not available, using CPU")
         device = torch.device("cpu")
 
-    # set random seed so each run is deterministic
     torch.manual_seed(seed)
     np.random.seed(seed)
     torch.backends.cudnn.benchmark = True
 
-    # directory with timestamp to save tensorboard logs and model checkpoints
     log_dir = Path(exp_dir) / f"{model_name}_{datetime.now().strftime('%m%d_%H%M%S')}"
     logger = tb.SummaryWriter(log_dir)
 
-    # note: the grader uses default kwargs for models
     model = load_model(model_name, **kwargs)
     model = model.to(device)
     model.train()
@@ -68,10 +65,19 @@ def train(
         shuffle=False,
     )
 
-    # create loss function and optimizer
     loss_func = torch.nn.L1Loss()
     
     optimizer = torch.optim.Adam(model.parameters(), lr=lr, weight_decay=weight_decay)
+    
+    scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(
+        optimizer, mode='min', factor=0.5, patience=5, min_lr=1e-6
+    )
+    
+    best_val_lateral = float('inf')
+    best_model_path = log_dir / f"best_{model_name}.th"
+    
+    patience = 50
+    patience_counter = 0
 
     global_step = 0
     metrics = {
@@ -84,7 +90,6 @@ def train(
 
     # training loop
     for epoch in range(num_epoch):
-        # clear metrics at beginning of epoch
         for key in metrics:
             metrics[key].clear()
 
@@ -99,10 +104,18 @@ def train(
 
             pred_waypoints = model(track_left=track_left, track_right=track_right)
 
-            # Mask out invalid waypoints and compute loss
             masked_waypoints = waypoints * waypoints_mask[..., None]
             masked_pred = pred_waypoints * waypoints_mask[..., None]
-            loss_val = loss_func(masked_pred, masked_waypoints)
+            
+            error = (pred_waypoints - waypoints).abs()
+            error_masked = error * waypoints_mask[..., None]
+            num_valid = waypoints_mask.sum().clamp(min=1.0)
+            
+            # Separate losses for longitudinal and lateral, with different weights
+            lon_error = error_masked[..., 0].sum() / num_valid
+            lat_error = error_masked[..., 1].sum() / num_valid
+            loss_val = 0.3 * lon_error + 0.7 * lat_error
+
 
             optimizer.zero_grad(set_to_none=True)
             loss_val.backward()
@@ -111,11 +124,9 @@ def train(
             global_step += 1
             metrics["train_loss"].append(loss_val.item())
 
-        # disable gradient computation and switch to evaluation mode
         with torch.inference_mode():
             model.eval()
 
-            # Prepare metric collector
             metric = PlannerMetric()
 
             for batch in val_data:
@@ -126,22 +137,21 @@ def train(
 
                 pred_waypoints = model(track_left=track_left, track_right=track_right)
 
-                # Calculate loss
                 masked_waypoints = waypoints * waypoints_mask[..., None]
                 masked_pred = pred_waypoints * waypoints_mask[..., None]
-                loss_val = loss_func(masked_pred, masked_waypoints)
+                
+                lon_loss = loss_func(masked_pred[..., 0], masked_waypoints[..., 0])
+                lat_loss = loss_func(masked_pred[..., 1], masked_waypoints[..., 1])
+                loss_val = 0.3 * lon_loss + 0.7 * lat_loss
                 metrics["val_loss"].append(loss_val.item())
 
-                # Add to metric
                 metric.add(pred_waypoints, waypoints, waypoints_mask)
 
-            # Get planner metrics
             planner_metrics = metric.compute()
             metrics["val_l1"].append(planner_metrics["l1_error"])
             metrics["val_longitudinal"].append(planner_metrics["longitudinal_error"])
             metrics["val_lateral"].append(planner_metrics["lateral_error"])
 
-        # log average train and val metrics to tensorboard
         epoch_train_loss = torch.as_tensor(metrics["train_loss"]).mean()
         epoch_val_loss = torch.as_tensor(metrics["val_loss"]).mean()
         epoch_val_l1 = torch.as_tensor(metrics["val_l1"]).mean()
@@ -154,7 +164,19 @@ def train(
         logger.add_scalar("val_longitudinal_error", epoch_val_longitudinal, global_step)
         logger.add_scalar("val_lateral_error", epoch_val_lateral, global_step)
 
-        # print on first, last, every 10th epoch
+        scheduler.step(epoch_val_loss)
+        
+        if epoch_val_lateral < best_val_lateral:
+            best_val_lateral = epoch_val_lateral
+            patience_counter = 0  # Reset patience counter
+            torch.save(model.state_dict(), best_model_path)
+            print(f"  -> Saved best model (val_longitudinal = {epoch_val_longitudinal:.3f})  (val_lateral={epoch_val_lateral:.3f})")
+        else:
+            patience_counter += 1
+            if patience_counter >= patience:
+                print(f"Early stopping: lateral error didn't improve for {patience} epochs")
+                break
+
         if epoch == 0 or epoch == num_epoch - 1 or (epoch + 1) % 5 == 0:
             print(
                 f"Epoch {epoch + 1:2d} / {num_epoch:2d}: "
@@ -168,10 +190,12 @@ def train(
                 f"val_lateral_error={epoch_val_lateral:.2f} "
             )
 
-    # save and overwrite the model in the root directory for grading
+    if best_model_path.exists():
+        model.load_state_dict(torch.load(best_model_path, weights_only=True))
+        print(f"Loaded best model from {best_model_path}")
+    
     save_model(model)
 
-    # save a copy of model weights in the log directory
     output_path = HOMEWORK_DIR / f"{model_name}.th"
     torch.save(model.state_dict(), output_path)
     print(f"Model saved to {output_path}")
