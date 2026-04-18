@@ -13,6 +13,9 @@ class MLPPlanner(nn.Module):
         self,
         n_track: int = 10,
         n_waypoints: int = 3,
+        hidden_dim: int = 128,
+        num_layers: int = 3,
+        dropout: float = 0.1,
     ):
         """
         Args:
@@ -26,14 +29,16 @@ class MLPPlanner(nn.Module):
         
         input_size = n_track * 4
         output_size = n_waypoints * 2
+
+        layers = []
+        for i in range(num_layers):
+            layers.append(nn.Linear(input_size if i == 0 else hidden_dim, hidden_dim))
+            layers.append(nn.ReLU())
+            layers.append(nn.Dropout(p=dropout))
+        layers.append(nn.Linear(hidden_dim, output_size))
+
+        self.model = nn.Sequential(*layers)
         
-        self.mlp = nn.Sequential(
-            nn.Linear(input_size, 128),
-            nn.ReLU(),
-            nn.Linear(128, 64),
-            nn.ReLU(),
-            nn.Linear(64, output_size),
-        )
 
     def forward(
         self,
@@ -61,7 +66,7 @@ class MLPPlanner(nn.Module):
         track_flat = torch.cat([track_left_flat, track_right_flat], dim=1)
         
         # Pass through MLP
-        output = self.mlp(track_flat)
+        output = self.model(track_flat)
         
         # Reshape to waypoints format
         waypoints = output.reshape(batch_size, self.n_waypoints, 2) 
